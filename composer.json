@@ -1,0 +1,42 @@
+{
+  "name": "vldmir/laravel-temp-file-manager",
+  "description": "A Laravel package for managing temporary files with automatic cleanup",
+  "type": "library",
+  "license": "MIT",
+  "autoload": {
+    "psr-4": {
+      "Vldmir\\TempFileManager\\": "src/"
+    }
+  },
+  "autoload-dev": {
+    "psr-4": {
+      "Vldmir\\TempFileManager\\Tests\\": "tests"
+    }
+  },
+  "authors": [
+    {
+      "name": "Volodymyr Romantsov",
+      "email": "vld.romantsov@gmail.com"
+    }
+  ],
+  "require": {
+    "php": "^8.0",
+    "illuminate/support": "^8.0|^9.0|^10.0"
+  },
+  "require-dev": {
+    "orchestra/testbench": "^6.0|^7.0|^8.0",
+    "phpunit/phpunit": "^9.0|^10.0"
+  },
+  "extra": {
+    "laravel": {
+      "providers": [
+        "Vldmir\\TempFileManager\\TempFileManagerServiceProvider"
+      ],
+      "aliases": {
+        "TempManager": "Vldmir\\TempFileManager\\Facades\\TempManager"
+      }
+    }
+  },
+  "minimum-stability": "dev",
+  "prefer-stable": true
+}

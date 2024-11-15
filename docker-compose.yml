@@ -1,0 +1,11 @@
+services:
+  test:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    volumes:
+      - .:/var/www/html
+    working_dir: /var/www/html
+    command: sleep infinity
+    environment:
+      - APP_ENV=testing
