@@ -3,6 +3,8 @@
 namespace Vldmir\TempFileManager;
 
 use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Carbon;
+use Exception;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
@@ -14,6 +16,11 @@ class TempFileManager
     private int $maxFileAgeHours;
     private string $disk;
 
+    /**
+     * TempFileManager constructor.
+     *
+     * @param array $config
+     */
     public function __construct(array $config)
     {
         $this->tempDirectory = $config['directory'] ?? 'temp';
@@ -23,6 +30,9 @@ class TempFileManager
         $this->ensureTempDirectoryExists();
     }
 
+    /**
+     * Ensure the temporary directory exists.
+     */
     private function ensureTempDirectoryExists(): void
     {
         if (!Storage::disk($this->disk)->exists($this->tempDirectory)) {
@@ -30,49 +40,159 @@ class TempFileManager
         }
     }
 
+    /**
+     * Sanitize filename to be safe for Unix systems.
+     * Removes/replaces potentially dangerous characters.
+     *
+     * @param string $filename
+     * @return string
+     */
+    private function sanitizeFilename(string $filename): string
+    {
+        // Get the parts of the filename
+        $extension = pathinfo($filename, PATHINFO_EXTENSION);
+        $basename = pathinfo($filename, PATHINFO_FILENAME);
+
+        // Remove any character that isn't alphanumeric, dot, dash, or underscore
+        $basename = preg_replace('/[^a-zA-Z0-9._-]/', '_', $basename);
+
+
+        // Replace multiple consecutive dots/underscores with a single one
+        $basename = preg_replace('/[._-]{2,}/', '_', $basename);
+
+        // Remove dots and dashes from the start and end
+        $basename = trim($basename, '._-');
+
+
+        // Ensure the filename isn't empty after sanitization
+        if (empty($basename)) {
+            $basename = 'file';
+        }
+
+        // Reconstruct filename with extension
+        return empty($extension) ? $basename : "$basename.$extension";
+    }
+
+    /**
+     * Get the temporary path for a filename.
+     *
+     * @param string $filename
+     * @param string|null $extension
+     * @return string
+     */
     public function getTempPath(string $filename, ?string $extension = null): string
     {
         $basename = pathinfo($filename, PATHINFO_FILENAME);
         $originalExtension = $extension ?? pathinfo($filename, PATHINFO_EXTENSION);
 
         $finalExtension = $originalExtension ? '.' . $originalExtension : '';
-        $path = $this->tempDirectory . '/' . $basename . $finalExtension;
+        $relativePath = $this->tempDirectory . '/' . $basename . $finalExtension;
 
-        return Storage::disk($this->disk)->path($path);
+        return Storage::disk($this->disk)->path($relativePath);
     }
+
+    /**
+     * Generate a unique filename if the desired one already exists.
+     *
+     * @param string $desiredFilename
+     * @return string
+     */
+    private function ensureUniqueFilename(string $desiredFilename): string
+    {
+        $extension = pathinfo($desiredFilename, PATHINFO_EXTENSION);
+        $basename = pathinfo($desiredFilename, PATHINFO_FILENAME);
+        $filename = $desiredFilename;
+        $counter = 1;
+
+        while (Storage::disk($this->disk)->exists("{$this->tempDirectory}/{$filename}")) {
+            $filename = empty($extension)
+                ? "{$basename}_{$counter}"
+                : "{$basename}_{$counter}.{$extension}";
+            $counter++;
+        }
+
+        return $filename;
+    }
+
+    /**
+     * Generate a safe filename.
+     *
+     * @param string|null $originalFilename
+     * @return string
+     */
+    private function generateSafeFilename(?string $originalFilename = null): string
+    {
+        $extension = $originalFilename ? pathinfo($originalFilename, PATHINFO_EXTENSION) : '';
+        $safeName = Str::random(32);
+
+        return $extension ? "{$safeName}.{$extension}" : $safeName;
+    }
+
+    /**
+     * Generate a unique filename in the temp directory.
+     *
+     * @param string $desiredFilename
+     * @return string
+     */
+    private function generateUniqueFilename(string $desiredFilename): string
+    {
+        $extension = pathinfo($desiredFilename, PATHINFO_EXTENSION);
+        $basename = pathinfo($desiredFilename, PATHINFO_FILENAME);
+
+        $filename = $desiredFilename;
+        $counter = 1;
+
+        while (Storage::disk($this->disk)->exists("{$this->tempDirectory}/{$filename}")) {
+            $filename = empty($extension)
+                ? "{$basename}_{$counter}"
+                : "{$basename}_{$counter}.{$extension}";
+            $counter++;
+        }
+
+        return $filename;
+    }
+
+    /**
+     * Save content to a temporary file.
+     *
+     * @param string|UploadedFile|resource $content
+     * @param string|null $filename
+     * @param string|null $extension
+     * @return string
+     * @throws Exception
+     */
     public function save($content, ?string $filename = null, ?string $extension = null): string
     {
         try {
-        // Generate filename if not provided
-        if (!$filename) {
-            $filename = Str::random(40);
-        }
-
-        // Get temp path with proper extension handling
-        $tempPath = $this->getTempPath($filename, $extension);
-            $relativePath = $this->getRelativePath($tempPath);
-
-        // Save content based on its type
-        if ($content instanceof UploadedFile) {
-            Storage::disk($this->disk)->putFileAs(
-                $this->tempDirectory,
-                $content,
-                basename($tempPath)
-            );
-        } elseif (is_resource($content)) {
-                Storage::disk($this->disk)->put($relativePath, stream_get_contents($content));
-                if (is_resource($content)) {
-                    fclose($content);
+            // Generate random filename if none provided
+            if (!$filename) {
+                $filename = Str::random(32);
+                if ($extension) {
+                    $filename .= ".$extension";
                 }
-        } else {
+            }
+
+            // Sanitize the filename
+            $safeFilename = $this->sanitizeFilename($filename);
+
+            // Ensure the filename is unique in the temp directory
+            $uniqueFilename = $this->ensureUniqueFilename($safeFilename);
+
+            $relativePath = "{$this->tempDirectory}/{$uniqueFilename}";
+
+            if ($content instanceof UploadedFile) {
+                Storage::disk($this->disk)->putFileAs($this->tempDirectory, $content, $uniqueFilename);
+            } elseif (is_resource($content)) {
+                Storage::disk($this->disk)->put($relativePath, stream_get_contents($content));
+            } else {
                 Storage::disk($this->disk)->put($relativePath, $content);
-        }
+            }
 
-        // Register file for auto-cleanup
-        $this->register($tempPath);
+            $fullPath = Storage::disk($this->disk)->path($relativePath);
+            $this->register($fullPath);
 
-        return $tempPath;
-        } catch (\Exception $e) {
+            return $fullPath;
+        } catch (Exception $e) {
             Log::error('Error saving temporary file', [
                 'error' => $e->getMessage(),
                 'filename' => $filename
@@ -81,42 +201,57 @@ class TempFileManager
         }
     }
 
+    /**
+     * Save an uploaded file to temporary storage.
+     *
+     * @param UploadedFile $file
+     * @param string|null $filename
+     * @return string
+     * @throws Exception
+     */
     public function saveUploadedFile(UploadedFile $file, ?string $filename = null): string
     {
-        $filename = $filename ?? $file->getClientOriginalName();
-        $extension = $file->getClientOriginalExtension();
-
-        return $this->save($file, $filename, $extension);
+        $originalName = $filename ?? $file->getClientOriginalName();
+        return $this->save($file, $originalName);
     }
 
+    /**
+     * Save content from a URL to a temporary file.
+     *
+     * @param string $url
+     * @param string|null $filename
+     * @return string
+     * @throws Exception
+     */
     public function saveFromUrl(string $url, ?string $filename = null): string
     {
         try {
-        $content = @file_get_contents($url);
+            $content = @file_get_contents($url);
 
-        if ($content === false) {
-            throw new \Exception("Failed to download file from URL: $url");
-        }
-
-        // Extract filename from URL if not provided
-        if (!$filename) {
-            $filename = basename(parse_url($url, PHP_URL_PATH));
-            if (empty($filename)) {
-                $filename = Str::random(40);
+            if ($content === false) {
+                throw new Exception("Failed to download file from URL: $url");
             }
-        }
 
-        return $this->save($content, $filename);
-        } catch (\Exception $e) {
+            $filename = $filename
+                ?? basename(parse_url($url, PHP_URL_PATH))
+                ?: $this->generateSafeFilename();
+
+            return $this->save($content, $filename);
+        } catch (Exception $e) {
             Log::error('Error downloading file from URL', [
                 'url' => $url,
                 'error' => $e->getMessage()
             ]);
             throw $e;
-    }
+        }
 
     }
 
+    /**
+     * Register a file for cleanup.
+     *
+     * @param string $filePath
+     */
     public function register(string $filePath): void
     {
         if ($filePath) {
@@ -124,19 +259,24 @@ class TempFileManager
         }
     }
 
+    /**
+     * Cleanup temporary files.
+     *
+     * @param string|null $filePath
+     */
     public function cleanup(?string $filePath = null): void
     {
         try {
-        if ($filePath) {
-            $this->removeFile($filePath);
-            $this->registeredFiles = array_filter($this->registeredFiles, fn($f) => $f !== $filePath);
-        } else {
-            foreach ($this->registeredFiles as $file) {
-                $this->removeFile($file);
+            if ($filePath) {
+                $this->removeFile($filePath);
+                $this->registeredFiles = array_filter($this->registeredFiles, fn($f) => $f !== $filePath);
+            } else {
+                foreach ($this->registeredFiles as $file) {
+                    $this->removeFile($file);
+                }
+                $this->registeredFiles = [];
             }
-            $this->registeredFiles = [];
-        }
-        } catch (\Exception $e) {
+        } catch (Exception $e) {
             Log::error('Error during cleanup', [
                 'error' => $e->getMessage(),
                 'file' => $filePath ?? 'all files'
@@ -144,25 +284,33 @@ class TempFileManager
         }
     }
 
+    /**
+     * Cleanup old temporary files.
+     */
     public function cleanupOldFiles(): void
     {
         try {
-        $files = Storage::disk($this->disk)->files($this->tempDirectory);
-        $threshold = now()->subHours($this->maxFileAgeHours)->timestamp;
+            $files = Storage::disk($this->disk)->files($this->tempDirectory);
+            $threshold = Carbon::now()->subHours($this->maxFileAgeHours)->timestamp;
 
-        foreach ($files as $file) {
-            $fullPath = Storage::disk($this->disk)->path($file);
-            if (is_file($fullPath) && filemtime($fullPath) < $threshold) {
-                $this->removeFile($fullPath);
+            foreach ($files as $file) {
+                $lastModified = Storage::disk($this->disk)->lastModified($file);
+                if ($lastModified < $threshold) {
+                    Storage::disk($this->disk)->delete($file);
+                }
             }
-        }
-        } catch (\Exception $e) {
+        } catch (Exception $e) {
             Log::error('Error during old files cleanup', [
                 'error' => $e->getMessage()
             ]);
         }
     }
 
+    /**
+     * Remove a file from storage.
+     *
+     * @param string $filePath
+     */
     private function removeFile(string $filePath): void
     {
         try {
@@ -170,7 +318,7 @@ class TempFileManager
             if (Storage::disk($this->disk)->exists($relativePath)) {
                 Storage::disk($this->disk)->delete($relativePath);
             }
-        } catch (\Exception $e) {
+        } catch (Exception $e) {
             Log::error('Failed to remove temporary file', [
                 'path' => $filePath,
                 'error' => $e->getMessage()
@@ -178,10 +326,16 @@ class TempFileManager
         }
     }
 
+    /**
+     * Get the relative path of a file on the disk.
+     *
+     * @param string $fullPath
+     * @return string
+     */
     private function getRelativePath(string $fullPath): string
     {
         $diskPath = Storage::disk($this->disk)->path('');
-        return str_replace($diskPath, '', $fullPath);
+        return ltrim(str_replace($diskPath, '', $fullPath), '/\\');
     }
 
     public function __destruct()
