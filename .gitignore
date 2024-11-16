@@ -1,0 +1,50 @@
+# PHP/Composer
+/vendor
+composer.lock
+.php-cs-fixer.cache
+.phpunit.result.cache
+.phpunit.cache
+
+# IDE/Editor folders
+.idea
+.vscode
+*.sublime-project
+*.sublime-workspace
+*.code-workspace
+
+# Operating System
+.DS_Store
+Thumbs.db
+*.log
+
+# Testing & Coverage
+/coverage
+/coverage-html
+.phpunit.cache
+.phpunit.result.cache
+clover.xml
+*.cache
+
+# Build files
+/build
+/dist
+
+# Environment files
+.env
+.env.backup
+.env.*.local
+
+# Docker
+docker-compose.override.yml
+
+# Laravel specific
+/public/storage
+/storage/*.key
+/node_modules
+/public/hot
+
+# Temporary files
+*.swp
+*.swo
+*~
+*.tmp

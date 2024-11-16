@@ -56,13 +56,11 @@ class TempFileManager
         // Remove any character that isn't alphanumeric, dot, dash, or underscore
         $basename = preg_replace('/[^a-zA-Z0-9._-]/', '_', $basename);
 
-
         // Replace multiple consecutive dots/underscores with a single one
         $basename = preg_replace('/[._-]{2,}/', '_', $basename);
 
         // Remove dots and dashes from the start and end
         $basename = trim($basename, '._-');
-
 
         // Ensure the filename isn't empty after sanitization
         if (empty($basename)) {

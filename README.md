@@ -41,58 +41,13 @@ This will create a `temp-file-manager.php` config file in your config directory.
 
 ```php
 return [
-    /*
-    |--------------------------------------------------------------------------
-    | Temporary Files Directory
-    |--------------------------------------------------------------------------
-    |
-    | This value determines the directory where temporary files will be stored.
-    | The path is relative to the storage disk specified below.
-    |
-    */
     'directory' => 'temp',
-
-    /*
-    |--------------------------------------------------------------------------
-    | Maximum File Age (Hours)
-    |--------------------------------------------------------------------------
-    |
-    | Files older than this value (in hours) will be automatically cleaned up
-    | when running the cleanup command.
-    |
-    */
     'max_age_hours' => 10,
-
-    /*
-    |--------------------------------------------------------------------------
-    | Storage Disk
-    |--------------------------------------------------------------------------
-    |
-    | The storage disk where temporary files will be stored. This should be
-    | configured in your filesystem.php config file.
-    |
-    */
     'disk' => 'local',
 ];
 ```
 
 ## Usage
-
-### Basic Usage with Facade
-
-```php
-use Vldmir\TempFileManager\Facades\TempManager;
-
-// Get a temporary file path
-$tempPath = TempManager::getTempPath('myfile.txt');
-
-// Register a file for auto-cleanup
-TempManager::register($tempPath);
-// After registering, the file will be automatically deleted when the PHP process ends
-
-// Clean up specific file manually if needed
-TempManager::cleanup($tempPath);
-```
 
 ### Saving Files
 
@@ -255,18 +210,43 @@ class DocumentController extends Controller
 }
 ```
 
-## Testing
+### File Naming Behavior
 
-```bash
-composer test
+When saving files, the package handles filenames in the following way:
+
+1. If no filename is provided, a random name is generated
+2. If a filename is provided:
+    - Unsafe characters are removed from the filename
+    - If a file with the same name exists, a counter is appended (e.g., `file_1.txt`, `file_2.txt`)
+
+```php
+// Examples of filename handling
+$manager = app(TempFileManager::class);
+
+// With custom filename (unsafe characters are removed)
+$path = $manager->save($content, 'my/unsafe:file.txt');
+// Results in: my_unsafe_file.txt
+
+// With duplicate filename
+$path1 = $manager->save($content1, 'report.pdf');
+$path2 = $manager->save($content2, 'report.pdf');
+// Results in: report.pdf, report_1.pdf
+
+// With uploaded file
+$path = $manager->saveUploadedFile($uploadedFile, 'custom-name.pdf');
+// Uses the provided name, sanitized if necessary
+
+// Without filename
+$path = $manager->save($content);
+// Generates a random filename
 ```
 
-Tests are written using PHPUnit and Orchestra Testbench. They cover all major functionality including:
-- File operations
-- Auto-cleanup
-- URL downloads
-- Uploaded file handling
-- Command execution
+The filename sanitization process:
+- Removes any character that isn't alphanumeric, dot, dash, or underscore
+- Replaces multiple consecutive dots/underscores with a single one
+- Removes dots and dashes from the start and end of the filename
+- Ensures the filename isn't empty
+
 
 ## Changelog
 
